@@ -3,17 +3,17 @@ using System;
 using System.Collections.Generic;
 public class MyBot : IChessBot
 {
-    public MyBot()
-    {
-        initTables();
-    }
+    // public MyBot()
+    // {
+    //     initTables();
+    // }
 
+    int[] pieceValue = { 0, 100, 283, 323, 481, 935, 350 };
     // PeSTO
     // https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
-    int[] pieceValue = { 0, 100, 283, 323, 481, 935, 500 };
-    int[] mgValue = { 0, 82, 337, 365, 477, 1025, 0 };
-    int[] egValue = { 0, 94, 281, 297, 512, 936, 0 };
-    int[] gamephaseInc = { 0, 0, 1, 1, 1, 1, 2, 2, 4, 4, 0, 0 };
+    int[] mgValue = { 0, 82, 337, 365, 477, 1025, 200 };
+    int[] egValue = { 0, 94, 281, 297, 512, 936, 400 };
+    int[] gamephaseInc = { 0, 0, 1, 1, 2, 4, 0 };
 
     // Compressed MG PST [0, 63]
     // Compressed EG PST [64, 127]
@@ -44,7 +44,7 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         bestMoveRoot = Move.NullMove;
-        for (int depth = 1; depth <= 100 && timer.MillisecondsElapsedThisTurn <= timer.MillisecondsRemaining / 35; depth++)
+        for (int depth = 3; depth <= 100 && timer.MillisecondsElapsedThisTurn <= timer.MillisecondsRemaining / 35; depth++)
         {
             _ = Search(board, timer, depth, -500000, 500000, 0);
         }
@@ -86,7 +86,7 @@ public class MyBot : IChessBot
             if (move == value.move) // if move is on Transposition Table forces to search first
                 scores[i] = 6000000;
             else if (move.IsCapture) // gives a value based on the trade value
-                scores[i] = 100 * (pieceValue[(int)move.CapturePieceType] - pieceValue[(int)move.MovePieceType]);
+                scores[i] = 10 * (pieceValue[(int)move.CapturePieceType] - pieceValue[(int)move.MovePieceType]);
         }
 
         for (int i = 0; i < moves.Length; i++)
@@ -122,57 +122,87 @@ public class MyBot : IChessBot
         return bestScore;
     }
 
-    int GetPST(int square, int piece, int offset = 0)
+    int GetPST(int square, int piece)
     {
-        return (short)(((psts[square + offset] >> (piece * 10)) & 1023) - 512);
+        return (short)(((psts[square] >> (piece * 10)) & 1023) - 512);
     }
 
-    int[,] mgTable = new int[12, 64];
-    int[,] egTable = new int[12, 64];
-    void initTables()
-    {
-        for (int p = 1, pc = 0; p < 7; pc += 2, p++)
-        {
-            for (int i = 0; i < 64; i++)
-            {
-                mgTable[pc, i] = mgValue[p] + GetPST(i ^ 56, p - 1);
-                egTable[pc, i] = egValue[p] + GetPST(i ^ 56, p - 1, 64);
+    // int[,] mgTable = new int[12, 64];
+    // int[,] egTable = new int[12, 64];
+    // void initTables()
+    // {
+    //     for (int p = 1, pc = 0; p < 7; pc += 2, p++)
+    //     {
+    //         for (int i = 0; i < 64; i++)
+    //         {
+    //             mgTable[pc, i] = mgValue[p] + GetPST(i ^ 56, p - 1);
+    //             egTable[pc, i] = egValue[p] + GetPST(i ^ 56, p - 1, 64);
 
-                mgTable[pc + 1, i] = mgValue[p] + GetPST(i, p - 1);
-                egTable[pc + 1, i] = egValue[p] + GetPST(i, p - 1, 64);
-            }
-        }
-    }
+    //             mgTable[pc + 1, i] = mgValue[p] + GetPST(i, p - 1);
+    //             egTable[pc + 1, i] = egValue[p] + GetPST(i, p - 1, 64);
+    //         }
+    //     }
+    // }
 
     int Evaluate(Board board)
     {
-        int[] mg = { 0, 0 }, eg = { 0, 0 };
-        int gamephase = 0, player = 0, pc = 0, side = board.IsWhiteToMove ? 0 : 1;
-        for (int i = 0; i < 64; i++)
+        if(board.IsInCheckmate())
+            return board.IsWhiteToMove ? -int.MaxValue : int.MaxValue;
+        // int[] mg = { 0, 0 }, eg = { 0, 0 };
+        // int mg = 0, eg = 0
+        int mg = 0, eg = 0, gamephase = 0, pc, sq;//, side = board.IsWhiteToMove ? 0 : 1;
+        foreach (bool white in new[] { true, false })
         {
-            Piece piece = board.GetPiece(new Square(i));
-            if (piece.PieceType != PieceType.None)
+            for (PieceType p = PieceType.Pawn; p <= PieceType.King; p++)
             {
-                if (piece.IsWhite)
+                pc = (int)p;
+                foreach (Piece piece in board.GetPieceList(p, white))
                 {
-                    player = 0;
-                    pc = ((int)piece.PieceType - 1) * 2;
+                    gamephase += gamephaseInc[pc];
+                    sq = piece.Square.Index ^ (white ? 56 : 0);
+                    mg += GetPST(sq, pc-1) + mgValue[pc];
+                    eg += GetPST(sq+64, pc-1) + egValue[pc];
+                    // mg += GetPST(sq, pc-1) + pieceValue[pc];
+                    // eg += GetPST(sq+64, pc-1) + pieceValue[pc];
                 }
-                else
-                {
-                    player = 1;
-                    pc = ((int)piece.PieceType - 1) * 2 + 1;
-                }
-                mg[player] += mgTable[pc, i];
-                eg[player] += egTable[pc, i];
-                gamephase += gamephaseInc[pc];
             }
+            mg = -mg;
+            eg = -eg;
         }
-
-        int mgScore = mg[side] - mg[side ^ 1];
-        int egScore = eg[side] - eg[side ^ 1];
-        int mgPhase = Math.Max(gamephase, 24);
-        int egPhase = 24 - mgPhase;
-        return (mgScore * mgPhase + egScore * egPhase) / 24;
+        // for (int i = 0; i < 64; i++)
+        // {
+        //     Piece piece = board.GetPiece(new Square(i));
+        //     if (piece.PieceType != PieceType.None)
+        //     {
+        //         pc = (int)piece.PieceType;
+        //         if (piece.IsWhite)
+        //             sq = i ^ 56;
+        //         else
+        //             sq = i;
+        //         mg += mgValue[pc] + GetPST(sq, pc - 1);
+        //         eg += mgValue[pc] + GetPST(sq+64, pc - 1);
+        //         // mg[player] = mgValue[pc] + GetPST(sq, pc - 1);
+        //         // eg[player] = egValue[pc] + GetPST(sq, pc - 1, 64);
+        //         gamephase += gamephaseInc[pc];
+        //         // if (piece.IsWhite)
+        //         // {
+        //         //     player = 0;
+        //         //     pc = ((int)piece.PieceType - 1) * 2;
+        //         // }
+        //         // else
+        //         // {
+        //         //     player = 1;
+        //         //     pc = ((int)piece.PieceType - 1) * 2 + 1;
+        //         // }
+        //         // mg[player] += mgTable[pc, i];
+        //         // eg[player] += egTable[pc, i];
+        //         // gamephase += gamephaseInc[pc];
+        //     }
+        // }
+        return (mg * gamephase + eg * (24 - gamephase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
+        // int mgScore = mg[side] - mg[side ^ 1];
+        // int egScore = eg[side] - eg[side ^ 1];
+        // int mgPhase = Math.Min(24, gamephase);
+        // return (mgScore * mgPhase + egScore * (24 - mgPhase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
     }
 }
