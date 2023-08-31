@@ -47,6 +47,7 @@ public class MyBot : IChessBot
         return bestMoveRoot.IsNull ? board.GetLegalMoves()[0] : bestMoveRoot;
     }
 
+    // https://github.com/JacquesRW/Chess-Challenge
     // https://www.chessprogramming.org/Quiescence_Search
     // https://www.chessprogramming.org/Alpha-Beta
     // https://stackoverflow.com/questions/9964496/alpha-beta-move-ordering
@@ -61,7 +62,7 @@ public class MyBot : IChessBot
             return 0;
 
         TTValue value = tt[key % TABLESIZE];
-        if (value.key == key && value.depth == depth)
+        if (value.key == key && value.depth >= depth)
             return value.eval;
 
         int eval = Evaluate(board);
@@ -81,8 +82,8 @@ public class MyBot : IChessBot
             Move move = moves[i];
             if (move == value.move) // if move is on Transposition Table forces to search first
                 scores[i] = 6000000;
-            else if (move.IsCapture) // gives a value based on the trade value
-                scores[i] = 10 * (pieceValue[(int)move.CapturePieceType] - pieceValue[(int)move.MovePieceType]);
+            else if (move.IsCapture) // gives a value based on MVV_LVA
+                scores[i] = 100 * (int)move.CapturePieceType - (int)move.MovePieceType;
         }
 
         for (int i = 0; i < moves.Length; i++)
@@ -114,6 +115,7 @@ public class MyBot : IChessBot
                     break;
             }
         }
+
         tt[key % TABLESIZE] = new TTValue(key, bestMove, bestScore, depth);
         return bestScore;
     }
@@ -123,6 +125,7 @@ public class MyBot : IChessBot
         return (short)(((psts[square] >> (piece * 10)) & 1023) - 512);
     }
 
+    // https://github.com/JacquesRW/Chess-Challenge
     int Evaluate(Board board)
     {
         int mg = 0, eg = 0, gamephase = 0, pc, sq;
